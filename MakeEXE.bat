@@ -1,0 +1,1 @@
+g++ ServidorRTP.cpp ServerRTP.cpp -o server -lws2_32
