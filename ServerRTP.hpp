@@ -1,5 +1,5 @@
-#ifndef SERVIDOR_HTTP
-#define SERVIDOR_HTTP
+#ifndef SERVIDOR_RTP
+#define SERVIDOR_RTP
 #include <iostream>
 #include <vector>
 #include <fstream>
@@ -8,14 +8,18 @@
 #include <string.h>
 #include <winsock.h>
 #include <time.h>
-#define RFC1123     "%a, %d %b %Y %H:%M:%S GMT" 
+#define CRLF "\r\n"
 #define BACKLOG_MAX 5
 #define PORT 8000
 
 using namespace std;
 
-typedef enum { INIT, READY, PLAYING } estado;
-string CRLF = "\r\n";
+typedef enum { INIT, READY, PLAYING, PAUSE } estado;
+static int MJPEG_TYPE = 26; //RTP payload type for MJPEG video
+static int FRAME_PERIOD = 100; //Frame period of the video to stream, in ms
+static int VIDEO_LENGTH = 500;
+
+
 
 class Tools{
 public:
@@ -80,7 +84,7 @@ public:
     Request(){
         this->header = "";
     }
-    string getHeader(){
+    string& getHeader(){
         return this->header;
     }
 };
@@ -99,7 +103,7 @@ public:
     }
 
     int frameN();
-    char *nextFrame();
+    char *nextFrame(int&);
 
     string filename;
     fstream file;
@@ -159,9 +163,9 @@ public:
             payload.resize(payload_size);
             strncpy((char *) payload.c_str(), pack+headerSize, packsize);
             payloadtype = header[1] & 127;
-            sequencenumber = unsigned int(header[3]) + 256 * unsigned int(header[2]);
-            timestamp = unsigned int(header[7]) + 256 * unsigned int (header[6]) + 65536 *
-                    unsigned int(header[5]) + 16777216 * unsigned int(header[4]);
+            sequencenumber = unsigned(int(header[3])) + 256 * unsigned(int(header[2]));
+            timestamp = unsigned(int(header[7])) + 256 * unsigned(int (header[6])) + 65536 *
+                    unsigned(int(header[5])) + 16777216 * unsigned(int(header[4]));
         }
     }
 
@@ -188,6 +192,7 @@ public:
 
 class Server{
 private:
+    int imagenb = 0; //image nb of the image currently transmitted
     int local_socket, remote_socket;
     unsigned short local_port, remote_port;
     struct sockaddr_in local_address, remote_address;
@@ -195,7 +200,6 @@ private:
     Response res;
     VideoStream stream;
     int estado = INIT;
-    //char clientData[1000];
     string session = "123456";
     WSADATA wsa_data;
 public:
@@ -217,8 +221,11 @@ public:
     void setRemotePort(int port){
         this->remote_port = port;
     }
+    void sendRtp();
     bool mylisten(int);
     bool mysend(string, string);
+    bool sendOptions(string);
+    bool sendDescribe(string);
     bool initServer();
     bool receiveRequest();
     void processRequest();

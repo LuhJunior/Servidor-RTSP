@@ -2,8 +2,8 @@
 #include "ServerRTP.hpp"
 
 int main(){
-    Server HTTP;
-    HTTP.mylisten(PORT);
-    HTTP.myclose();
+    Server rtp;
+    rtp.mylisten(PORT);
+    rtp.myclose();
     return 0;
 }

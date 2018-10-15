@@ -3,7 +3,7 @@
 using namespace std;
 
 vector<string> Tools::split(string s, char t){
-    vector<string> v;
+    vector<string> v = vector<string>();
     while(!s.empty()){
         size_t p = s.find(t);
         if(p != -1){
@@ -43,8 +43,8 @@ int VideoStream::frameN(){
     return frame;
 }
 
-char *VideoStream::nextFrame(){
-    int tam = 0;
+char *VideoStream::nextFrame(int &tam){
+    tam = 0;
     string frametam;
     frametam.resize(5);
     file.read((char *) frametam.c_str(), 5);
@@ -67,24 +67,48 @@ char * Rtp::getpayloaddata(){
     return data;
 }
 
+void Server::sendRtp(){
+    imagenb++;
+    int tam;
+    char *data = stream.nextFrame(tam);
+    Rtp rtp = Rtp(MJPEG_TYPE, imagenb, imagenb * FRAME_PERIOD, data, tam);
+    
+    int packlength = rtp.getlength();
+    char * packdata = rtp.getdata();
+    
+    while(send(remote_socket, packdata, packlength, 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
+
+    rtp.print_header();
+    free(data);
+    free(packdata);
+}
+
 bool Server::receiveRequest(){
-    this->req.getHeader().resize(1000);
+    //req.getHeader().clear();
+    req.getHeader().resize(500);
     // recebe a bloco do de requisição
     while(recv(remote_socket, (char *) req.getHeader().c_str(), req.getHeader().size(), 0) == SOCKET_ERROR);
-    cout<<req.getHeader();
+    //req.getHeader().shrink_to_fit();
+    cout<<req.getHeader()<<endl;
     return true;
 }
 
 void Server::processRequest(){
-    auto req = Tools::split(this->req.getHeader(), '\n');
-    auto line = Tools::split(req[0], ' ');
+    vector<string> request = Tools::split(req.getHeader(), '\n');
+    vector<string> line = Tools::split(request[0], ' ');
     string reqtype = line[0]; // tipo da requisição
-    string filename = line[1]; //nome do arquivo
-    auto seq = Tools::split(req[1], ' '); // numero da sequencia
-
-    if(reqtype == "SETUP"){
+    string filename = Tools::split(line[1], '/')[3]; //nome do arquivo
+    cout<<filename<<endl;
+    auto seq = Tools::split(request[1], ' '); // numero da sequencia
+    if(reqtype == "OPTIONS"){
+        sendOptions(seq[1]);
+    }
+    else if(reqtype == "DESCRIBE"){
+        sendDescribe(seq[1]);
+    }
+    else if(reqtype == "SETUP"){
         if(estado == INIT){
-            stream = Stream(filename);
+            stream = VideoStream(filename);
             estado = READY;
             mysend("200 OK", seq[1]);
             cout<<"estado SETUP";
@@ -95,6 +119,7 @@ void Server::processRequest(){
             estado = PLAYING;
             mysend("200 OK", seq[1]);
             cout<<"estado PLAYING";
+            sendRtp();
         }
         else if(estado == PAUSE){
             estado = PLAYING;
@@ -106,30 +131,65 @@ void Server::processRequest(){
             mysend("200 OK", seq[1]);
         }
     }
-    else if(reqtype == TEARDOWN){
+    else if(reqtype == "TEARDOWN"){
         mysend("200 OK", seq[1]);
         myclose();
     }
 }
 
-void Response::makeHeader(){
-    this->header.append("RTSP/1.1 " + this->getStatus() + "\r\n");
-    /*
-    this->header.append("Server: " + this->getServer() +  "\r\n");
-    this->header.append("Date: " + this->getDate() +  "\r\n");
-    this->header.append("Content-Type: " + this->getContentType() +  "\r\n");
-    this->header.append("Content-Length: " + this->getContentLength() +  "\r\n");
-    this->header.append("Connection: " + this->getConnection() +  "\r\n");
-    */
-    this->header.append("CSeq: 2 \r\n");
-    this->header.append("Public: SETUP, TEARDOWN, PLAY, PAUSE \r\n");
-    this->header.append("\r\n");
-}
-
 bool Server::mysend(string status, string seq){
-    string buffer = "RTSP/1.0 " + status + CRLF + "CSeq: " + seq + CRLF + "Session: " + session;
+    string buffer = "RTSP/1.0 " + status + CRLF + "CSeq: " + seq + CRLF + "Session: " + session + CRLF + CRLF;
     //enviando
     while(send(remote_socket, (char *) buffer.c_str(), buffer.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
+    cout<<buffer<<endl;
+    return true;
+}
+
+bool Server::sendOptions(string seq){
+    string buffer = "";
+    buffer.append("RTSP/1.0 200 OK" + string(CRLF));
+    buffer.append("CSeq: " + seq + CRLF);
+    buffer.append("Public: DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE" + string(CRLF));
+    buffer.append("\r\n");
+    //enviando
+    while(send(remote_socket, (char *) buffer.c_str(), buffer.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
+    cout<<buffer<<endl;
+    return true;
+}
+
+
+bool Server::sendDescribe(string seq){
+    string buffer = "";
+    string describe = "";
+
+    describe.append("v=0" + string(CRLF));
+    describe.append("o=mhandley 2890844526 2890842807 IN IP4 126.16.64.4" + string(CRLF));
+    describe.append("s=SDP Seminar" + string(CRLF));
+    describe.append("i=A Seminar on the session description protocol" + string(CRLF));
+    describe.append("u=http://www.cs.ucl.ac.uk/staff/M.Handley/sdp.03.ps" + string(CRLF));
+    describe.append("e=mjh@isi.edu (Mark Handley)" + string(CRLF));
+    describe.append("c=IN IP4 224.2.17.12/127" + string(CRLF));
+    describe.append("t=2873397496 2873404696" + string(CRLF));
+    describe.append("a=recvonly" + string(CRLF));
+    describe.append("m=audio 3456 RTP/AVP 0" + string(CRLF));
+    describe.append("m=video 2232 RTP/AVP 31" + string(CRLF));
+    describe.append("m=whiteboard 32416 UDP WB" + string(CRLF));
+    describe.append("a=orient:portrait" + string(CRLF));
+    //describe.append(CRLF);
+
+    buffer.append("RTSP/1.0 200 OK" + string(CRLF));
+    buffer.append("CSeq: " + seq + CRLF);
+    //buffer.append("Date: 23 Jan 1997 15:35:06 GMT" + string(CRLF));
+    buffer.append("Content-Base: rtsp://localhost:8000/video.mjpeg" + string(CRLF));
+    buffer.append("Content-Type: application/sdp" + string(CRLF));
+    buffer.append("Content-Length: " + to_string(describe.size()) + string(CRLF));
+    buffer.append("Server: /localhost:8000" + string(CRLF));
+    buffer.append(CRLF);
+    
+    //enviando
+    if(send(remote_socket, (char *) buffer.c_str(), buffer.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
+    //cout<<buffer<<endl;
+    if(send(remote_socket, (char *) describe.c_str(), describe.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
     return true;
 }
 
@@ -167,13 +227,15 @@ bool Server::mylisten(int port){
     cout<<"Aguardando requisicoes..."<<endl;
     while(true){
         if(!this->receiveRequest()) return Tools::ErrorS("Falha ao receber a requisicao", false, this->local_socket);
-        //if(!this->res.Send(req.getRequestFileName(), this->remote_socket))  return Tools::ErrorS("Falha ao responder a requisicao", false, this->local_socket);
+        processRequest();
+        cout<<"Processada"<<endl;
     }
     return true;
 }
 
 void Server::myclose(){
     WSACleanup();
+    stream.file.close();
     closesocket(this->remote_socket);
     closesocket(this->local_socket);
 }
