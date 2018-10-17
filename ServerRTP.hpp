@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <winsock.h>
+#include <thread>  
 #include <time.h>
 #define CRLF "\r\n"
 #define BACKLOG_MAX 5
@@ -103,7 +104,7 @@ public:
     }
 
     int frameN();
-    char *nextFrame(int&);
+    int nextFrame(char *&);
 
     string filename;
     fstream file;
@@ -119,36 +120,28 @@ public:
     Rtp(int Ptype, int frameN, int time, char *data, int data_tam){
         version = 2;
         padding = extension = CC = marker = ssrc = 0;
-        
-        sequencenumber = frameN;
+    	payloadtype = Ptype;
         timestamp = time;
-        payloadtype = Ptype;
-
+        sequencenumber = frameN;
         header.resize(headerSize);
+        header[0] = (byte) (version << 6 | padding << 5 | extension << 4 | CC);
+		header[1] = (byte) (marker << 7 | payloadtype);
+		header[2] = (byte) (sequencenumber >> 8);
+		header[3] = (byte) (sequencenumber & 0xFF);
+		header[4] = (byte) (timestamp >> 24);
+		header[5] = (byte) (timestamp >> 16);
+		header[6] = (byte) (timestamp >> 8);
+		header[7] = (byte) (timestamp & 0xFF);
 
-        ((char *) header.c_str())[0] = version << 6;
-		((char *) header.c_str())[0] = header.c_str()[0] | padding << 5;
-		((char *) header.c_str())[0] = ((char *) header.c_str())[0] | extension << 4;
-		((char *) header.c_str())[0] = ((char *) header.c_str())[0] | CC;
-		((char *) header.c_str())[1] = marker << 7;
-		((char *) header.c_str())[1] = ((char *) header.c_str())[1] | payloadtype;
-
-		((char *) header.c_str())[2] = sequencenumber;
-		((char *) header.c_str())[3] = sequencenumber;
-
-		((char *) header.c_str())[4] = (timestamp >> 24) & 0xFF;
-		((char *) header.c_str())[5] = (timestamp >> 16) & 0xFF;
-		((char *) header.c_str())[6] = (timestamp >> 8) & 0xFF;
-		((char *) header.c_str())[7] = timestamp & 0xFF;
-
-		((char *) header.c_str())[8] = ssrc >> 24;
-		((char *) header.c_str())[9] = ssrc >> 16;
-		((char *) header.c_str())[10] = ssrc >> 8;
-		((char *) header.c_str())[11] = ssrc;
-
+		header[8] = (byte) (ssrc >> 24);
+		header[9] = (byte) (ssrc >> 16);
+		header[10] = (byte) (ssrc >> 8);
+		header[11] = (byte) (ssrc & 0xFF);
+        for(char x : header) cout<<x<<endl;
+        cout<<endl;
         payload_size = data_tam;
         payload.resize(data_tam);
-        strcpy((char *) payload.c_str(), data);
+        strncpy((char *) payload.c_str(), data, data_tam);
     }
 
     Rtp(char *pack, int packsize){
@@ -193,9 +186,9 @@ public:
 class Server{
 private:
     int imagenb = 0; //image nb of the image currently transmitted
-    int local_socket, remote_socket;
+    int local_socket, remote_socket, udp_socket;
     unsigned short local_port, remote_port;
-    struct sockaddr_in local_address, remote_address;
+    struct sockaddr_in local_address, remote_address, udp_address;
     Request req;
     Response res;
     VideoStream stream;
@@ -208,6 +201,7 @@ public:
         local_port = remote_port = 0;
         memset(&local_address, 0, sizeof(local_address));
         memset(&remote_address, 0, sizeof(remote_address));
+        memset(&udp_address, 0, sizeof(udp_address));
     }
     int getLocalPort(){
         return this->local_port;
@@ -222,6 +216,7 @@ public:
         this->remote_port = port;
     }
     void sendRtp();
+    void prepareUdp(int);
     bool mylisten(int);
     bool mysend(string, string);
     bool sendOptions(string);
