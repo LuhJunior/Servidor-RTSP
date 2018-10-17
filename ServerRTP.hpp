@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <winsock.h>
-#include <thread>  
+#include <thread>
 #include <time.h>
 #define CRLF "\r\n"
 #define BACKLOG_MAX 5
@@ -137,11 +137,9 @@ public:
 		header[9] = (byte) (ssrc >> 16);
 		header[10] = (byte) (ssrc >> 8);
 		header[11] = (byte) (ssrc & 0xFF);
-        for(char x : header) cout<<x<<endl;
-        cout<<endl;
         payload_size = data_tam;
         payload.resize(data_tam);
-        strncpy((char *) payload.c_str(), data, data_tam);
+        memcpy((char *) payload.c_str(), data, data_tam);
     }
 
     Rtp(char *pack, int packsize){
@@ -185,6 +183,8 @@ public:
 
 class Server{
 private:
+
+    //thread send;
     int imagenb = 0; //image nb of the image currently transmitted
     int local_socket, remote_socket, udp_socket;
     unsigned short local_port, remote_port;

@@ -53,33 +53,35 @@ int VideoStream::nextFrame(char * &data){
     tam = stoi(frametam);
     data = (char *) malloc(tam);
     file.read(data, tam);
-    cout<<tam<<endl;
+    //cout<<tam<<endl;
     return tam;
 }
 
 char * Rtp::getdata(){
     char *data = (char *) malloc(payload_size + headerSize);
-    strncpy(data, header.c_str(), headerSize);
-    strncpy(data + headerSize, payload.c_str(), payload_size);
+    memcpy(data, header.c_str(), headerSize);
+    memcpy(data + headerSize, payload.c_str(), payload_size);
     return data;
 }
 
 char * Rtp::getpayloaddata(){
     char *data = (char *) malloc(payload_size);
-    strncpy(data, payload.c_str(), payload_size);
+    memcpy(data, payload.c_str(), payload_size);
     return data;
 }
 
 void Server::sendRtp(){
-    Sleep(3000);
+    /*
+    if(receiveRequest()){
+        processRequest();
+        return;
+    }*/
+    Sleep(50);
     imagenb++;
     char *data = nullptr;
-    free(data);
-    data = nullptr;
     Rtp rtp = Rtp(MJPEG_TYPE, imagenb, imagenb * FRAME_PERIOD, data, stream.nextFrame(data));
     int packlength = rtp.getlength();
     char *packdata = rtp.getdata();
-    //cout<<udp_address.sin_addr<<endl;
     while(sendto(udp_socket, packdata, packlength, 0, 
             (LPSOCKADDR) &udp_address, 
             sizeof(struct sockaddr)) == SOCKET_ERROR) 
@@ -100,7 +102,7 @@ bool Server::receiveRequest(){
     //req.getHeader().clear();
     req.getHeader().resize(500);
     // recebe a bloco do de requisição
-    while(recv(remote_socket, (char *) req.getHeader().c_str(), req.getHeader().size(), 0) == SOCKET_ERROR);
+    if(recv(remote_socket, (char *) req.getHeader().c_str(), req.getHeader().size(), 0) == SOCKET_ERROR) return false;
     //req.getHeader().shrink_to_fit();
     cout<<req.getHeader()<<endl;
     return true;
@@ -138,13 +140,14 @@ void Server::processRequest(){
             estado = PLAYING;
             mysend("200 OK", seq[1]);
             cout<<"estado PLAYING"<<endl;
-            //thread send (sendRtp);
+            //send = thread(sendRtp);
             while(!stream.file.eof()) sendRtp();
-            stream.file.seekg(0);
             estado = READY;
         }
         else if(estado == PAUSE){
             estado = PLAYING;
+            mysend("200 OK", seq[1]);
+            while(estado == PLAYING) sendRtp();
         }
     }
     else if(reqtype == "PAUSE"){
@@ -186,33 +189,22 @@ bool Server::sendDescribe(string seq){
     string describe = "";
 
     describe.append("v=0" + string(CRLF));
-    describe.append("o=mhandley 2890844526 2890842807 IN IP4 126.16.64.4" + string(CRLF));
-    describe.append("s=SDP Seminar" + string(CRLF));
-    describe.append("i=A Seminar on the session description protocol" + string(CRLF));
-    describe.append("u=http://www.cs.ucl.ac.uk/staff/M.Handley/sdp.03.ps" + string(CRLF));
-    describe.append("e=mjh@isi.edu (Mark Handley)" + string(CRLF));
-    describe.append("c=IN IP4 224.2.17.12/127" + string(CRLF));
-    describe.append("t=2873397496 2873404696" + string(CRLF));
-    describe.append("a=recvonly" + string(CRLF));
-    describe.append("m=audio 3456 RTP/AVP 0" + string(CRLF));
-    describe.append("m=video 2232 RTP/AVP 31" + string(CRLF));
-    describe.append("m=whiteboard 32416 UDP WB" + string(CRLF));
-    describe.append("a=orient:portrait" + string(CRLF));
-    describe.append(CRLF);
+    describe.append("m=video " + to_string(PORT) + " RTP/AVP " + to_string(MJPEG_TYPE) + string(CRLF));
+    describe.append("a=control:streamid=1234" + string(CRLF));
+    describe.append("a=mimetype:string;\"video/MJPEG\"" + string(CRLF));
 
     buffer.append("RTSP/1.0 200 OK" + string(CRLF));
     buffer.append("CSeq: " + seq + CRLF);
-    //buffer.append("Date: 23 Jan 1997 15:35:06 GMT" + string(CRLF));
-    buffer.append("Content-Base: rtsp://localhost:8000/video.mjpeg" + string(CRLF));
+    buffer.append("Content-Base: " + stream.filename + string(CRLF));
     buffer.append("Content-Type: application/sdp" + string(CRLF));
-    buffer.append("Content-Length: " + to_string(describe.size()) + string(CRLF));
-    //buffer.append("Server: /localhost:8000" + string(CRLF));
-    buffer.append(CRLF);
+    buffer.append("Content-Length: " + describe.length() + string(CRLF));
+
     
     //enviando
     if(send(remote_socket, (char *) buffer.c_str(), buffer.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
-    //cout<<buffer<<endl;
-    //if(send(remote_socket, (char *) describe.c_str(), describe.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
+    cout<<buffer<<endl;
+    cout<<describe<<endl;
+    if(send(remote_socket, (char *) describe.c_str(), describe.size(), 0) == SOCKET_ERROR) cout<<"Erro ao enviar resposta\nTentando enviar novamente\n";
     return true;
 }
 
