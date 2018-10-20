@@ -6,9 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <winsock.h>
-#include <thread>
-#include <time.h>
+#include <winsock2.h>
+#include <process.h>
 #define CRLF "\r\n"
 #define BACKLOG_MAX 5
 #define PORT 8000
@@ -20,7 +19,7 @@ static int MJPEG_TYPE = 26; //RTP payload type for MJPEG video
 static int FRAME_PERIOD = 100; //Frame period of the video to stream, in ms
 static int VIDEO_LENGTH = 500;
 
-
+unsigned __stdcall listenThread(void *);
 
 class Tools{
 public:
@@ -194,6 +193,7 @@ private:
     VideoStream stream;
     int estado = INIT;
     string session = "123456";
+    HANDLE Thread; 
     WSADATA wsa_data;
 public:
     Server(){
@@ -215,16 +215,23 @@ public:
     void setRemotePort(int port){
         this->remote_port = port;
     }
-    void sendRtp();
+    int getEstado(){
+        return estado;
+    }
+    bool sendRtp();
     void prepareUdp(int);
     bool mylisten(int);
     bool mysend(string, string);
     bool sendOptions(string);
-    bool sendDescribe(string);
+    bool sendDescribe(string, string);
+    bool sendSetup(string, string, string);
     bool initServer();
     bool receiveRequest();
     void processRequest();
     void myclose();
+    //void sendRtpThread(void *);
+
+    int porta = PORT;
 };
 
 #endif
